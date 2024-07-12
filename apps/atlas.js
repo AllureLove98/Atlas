@@ -6,6 +6,8 @@ import puppeteer from '../../../lib/puppeteer/puppeteer.js'
 import { pluginRoot, pluginResources } from '../model/path.js'
 import Reply from '../model/reply.js'
 import { library, list } from '../model/moreLib.js'
+import sharp from 'sharp';
+import path from 'path'
 
 let context = {} // 索引表
 let num = {} // 计数器
@@ -15,7 +17,7 @@ if (!fs.existsSync(`${pluginResources}/config.yaml`)) { fs.copyFileSync(`${plugi
 let atlasConfig = YAML.parse(fs.readFileSync(`${pluginResources}/config.yaml`, 'utf8'))
 
 export class atlas extends plugin {
-  constructor () {
+  constructor() {
     let rule = {
       reg: '#?.+(图鉴)*',
       fnc: 'atlas'
@@ -31,11 +33,11 @@ export class atlas extends plugin {
     Object.defineProperty(rule, 'log', { get: () => this.islog })
   }
 
-  getLibraryResourcePath (libName) {
+  getLibraryResourcePath(libName) {
     return `${pluginResources}/Forlibrary/${library[libName]}/`
   }
 
-  init () {
+  init() {
     // 载入图鉴库
     let hasLibrary = false
     for (let listElement of list) {
@@ -63,7 +65,7 @@ export class atlas extends plugin {
     if (!hasLibrary) { logger.error('Atlas图鉴拓展包没有正确安装或者不是最新版本。请发送指令 #图鉴升级 以获取或升级Atlas图鉴拓展包') }
   }
 
-  async atlas (e) {
+  async atlas(e) {
     // 提取有效口令
     let msg
     try { msg = e.msg.trim() } catch (e) { return false }
@@ -94,10 +96,24 @@ export class atlas extends plugin {
 
           // 检查资源是否存在
           if (rightname in imagePath[sync]) {
-            let path = `${libpath}${imagePath[sync][rightname]}`
-            if (fs.existsSync(path)) {
+            let originalPath = `${libpath}${imagePath[sync][rightname]}`;
+            if (fs.existsSync(originalPath)) {
+              // 使用 sharp 处理图片
+              const imageBuffer = fs.readFileSync(originalPath);
+              const resizedImageBuffer = await sharp(imageBuffer)
+                .resize({ fit: 'inside', withoutEnlargement: true }) // 保持宽高比
+                .jpeg({ quality: 20 }) //品质设为 20
+                .toBuffer();
+              // 确保目录存在
+              const saveDir = './data/yasuo';
+              if (!fs.existsSync(saveDir)) {
+                fs.mkdirSync(saveDir);
+              }
+              // 保存处理后的图片
+              const savedImagePath = path.join(saveDir, `temp.jpg`);
+              fs.writeFileSync(savedImagePath, resizedImageBuffer);
               // 回复图片
-              this.reply(global.segment.image('file://' + path))
+              this.reply(global.segment.image('file://' + savedImagePath))
               this.islog = true
               // 是否交给其他插件处理
               return atlasConfig.success
@@ -113,7 +129,7 @@ export class atlas extends plugin {
     return this.islog
   }
 
-  async index (sync, key, rule, libpath) {
+  async index(sync, key, rule, libpath) {
     // 获取索引文件目录
     let respath = `${libpath}/index/${sync}.yaml`
     if (!fs.existsSync(respath)) { return false }
@@ -166,7 +182,7 @@ export class atlas extends plugin {
     }
   }
 
-  async select (e) {
+  async select(e) {
     // 计数器自增
     if (num[this.e.user_id]) { num[this.e.user_id]++ } else { num[this.e.user_id] = 1 }
 
@@ -185,14 +201,14 @@ export class atlas extends plugin {
     return this.atlas(e)
   }
 
-  async getRule (sync, libname) {
+  async getRule(sync, libname) {
     // 获取某目录的匹配规则
     let syncPath = `${this.getLibraryResourcePath(libname)}rule/${sync}.yaml`
     if (!fs.existsSync(syncPath)) { syncPath = `${this.getLibraryResourcePath(libname)}rule/config.yaml` }
     return YAML.parse(fs.readFileSync(syncPath, 'utf8'))
   }
 
-  async PickRule (msg, Rule) {
+  async PickRule(msg, Rule) {
     // 执行匹配规则
     let pickreg = /图鉴/g
     let prefix = '#'
@@ -225,7 +241,7 @@ export class atlas extends plugin {
   }
 
   // 传入需要处理的名字 返回原始名字
-  async getName (originName, sync, pickmode, libName) {
+  async getName(originName, sync, pickmode, libName) {
     let OtherNamePath = `${pluginRoot}/${library[libName]}/othername/${sync}.yaml`
     if (!fs.existsSync(OtherNamePath)) OtherNamePath = `${this.getLibraryResourcePath(libName)}othername/${sync}.yaml`
     // 检查对应库的别名文件是否存在
